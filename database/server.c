@@ -239,6 +239,7 @@ ParsedStringQueue* parseStringSQLScript(char str[])
 	ParsedStringQueue *walker = root;
 	ParsedStringQueue *newString = NULL;
 	int parentheses = 0;
+	int quotation = 0;
 	
 	for (int i = 0; i < scriptLength; i++)
 	{
@@ -254,7 +255,13 @@ ParsedStringQueue* parseStringSQLScript(char str[])
 				{
 					parentheses--;
 				}
-				if ((str[i] == '(' && str[j] == ')' && parentheses == 0) || (str[i] != '(' && (str[j] == ' ' || str[j] == ';')))
+				
+				if (str[j] == '\'')
+				{
+					quotation = quotation == 1 ? 0 : 1;
+				}
+				
+				if ((str[i] == '(' && str[j] == ')' && parentheses == 0) || (str[i] != '(' && (str[j] == ' ' || str[j] == ';') && quotation == 0))
 				{
 					newString = (ParsedStringQueue *)malloc(sizeof(ParsedStringQueue));
 					newString->next = NULL;
@@ -1236,6 +1243,149 @@ int deleteFromDatabaseTable(char database[], char table[], char *whereAttr, void
 	return deleted;
 }
 
+int deleteFromTableScript(ParsedStringQueue **queue, AccountData *clientAccount)
+{
+	if (clientAccount->openningDatabase == 1 && *queue != NULL)
+	{
+		char tableName[64];
+		memcpy(tableName, (*queue)->parsedString, sizeof(tableName));
+	
+		popParsedStringQueue(queue);
+		
+		int returnValue = -1;
+		
+		int totalAttribute = 0;
+		int recordBlockSize = 0;
+		Attribute attribute[__MAX_ATTRIBUTE_ON_TABLE];
+		
+		if (
+			readTableAttribute(
+				clientAccount->databaseName, tableName, &totalAttribute, attribute, &recordBlockSize
+			) == 1
+		)
+		{
+			if (*queue != NULL)
+			{
+				if (strcasecmp((*queue)->parsedString, "WHERE") == 0)
+				{
+					popParsedStringQueue(queue);
+					
+					if (*queue == NULL)
+					{
+						return -1;
+					}
+					
+					int strLength = strlen((*queue)->parsedString);
+					
+					int offset = 0;
+					char *parsedString = (*queue)->parsedString;
+					
+					int attributeParsed = 0;
+					
+					for (int i = 0; i < strLength; i++)
+					{
+						if (parsedString[i] == '=')
+						{
+							attributeParsed = 1;
+							parsedString[i]	= '\0';
+						}
+						else if (parsedString[i] == '\'')
+						{
+							parsedString[i]	= '\0';
+						}
+						else if (parsedString[i] == ' ' && attributeParsed == 0)
+						{
+							parsedString[i]	= '\0';
+						}
+					}
+					
+					char attributeName[__MAX_ATTRIBUTE_NAME_LENGTH];
+					strcpy(attributeName, parsedString);
+					
+					while(parsedString[offset] != '\0' && offset < strLength)
+					{
+						offset++;
+					}
+					while(parsedString[offset] == '\0' && offset < strLength)
+					{
+						offset++;
+					}
+					
+					if (offset >= strLength)
+					{
+						return -1;
+					}
+					
+					int deletedValueAttributeIndex = -1;
+					for (int i = 0; i < totalAttribute && deletedValueAttributeIndex == -1; i++)
+					{
+						if (strcmp(attributeName, attribute[i].attributeName) == 0)
+						{
+							deletedValueAttributeIndex = i;
+						}
+					}
+					
+					if (deletedValueAttributeIndex != -1)
+					{
+						void *deletedValue = malloc(attribute[deletedValueAttributeIndex].size);
+						memset(deletedValue, 0, attribute[deletedValueAttributeIndex].size);
+						
+						DataType deletedAttributeType = attribute[deletedValueAttributeIndex].type;
+						
+						if (
+							deletedAttributeType == STRING || deletedAttributeType == TIME || 
+							deletedAttributeType == DATE || deletedAttributeType == DATETIME
+						)
+						{
+							printf("%s\n", parsedString + offset);
+							strcpy(deletedValue, parsedString + offset);
+						}
+						else if (deletedAttributeType == INT)
+						{
+							int data;
+							sscanf(parsedString + offset, "%d", &data);
+							memcpy(deletedValue, &data, sizeof(data));
+						}
+						else if (deletedAttributeType == LONG)
+						{
+							long long int data;
+							sscanf(parsedString + offset, "%lld", &data);
+							memcpy(deletedValue, &data, sizeof(data));
+						}
+						else if (deletedAttributeType == DECIMAL)
+						{
+							double data;
+							sscanf(parsedString + offset, "%lf", &data);
+							memcpy(deletedValue, &data, sizeof(data));
+						}
+						
+						returnValue = deleteFromDatabaseTable(
+							clientAccount->databaseName, tableName,
+							attribute[deletedValueAttributeIndex].attributeName, deletedValue
+						);
+						
+						free(deletedValue);
+					}
+					else
+					{
+						returnValue = deleteFromDatabaseTable(
+							clientAccount->databaseName, tableName,
+							attributeName, NULL
+						);
+					}
+				}
+			}
+			else
+			{
+				return deleteFromDatabaseTable(clientAccount->databaseName, tableName, NULL, NULL);
+			}
+		}
+
+		return returnValue;
+	}
+	return -1;
+}
+
 int dropDatabase(ParsedStringQueue **queue, AccountData *clientAccount)
 {
 	if (clientAccount->openningDatabase == 1 && strcasecmp(clientAccount->databaseName, (*queue)->parsedString) == 0)
@@ -1709,6 +1859,28 @@ int main(int argc, char **argv)
 	            			else
 	            			{
 	            				strcpy(message, "MGagal memasukkan data");
+	            			}
+	            		}
+	            		else
+	            		{
+        					strcpy(message, "MScript error");
+	            		}
+		            }
+		            else if (queue != NULL && strcasecmp(queue->parsedString, "DELETE") == 0)
+                	{
+	            		popParsedStringQueue(&queue);
+	            		
+		            	if (queue != NULL && strcasecmp(queue->parsedString, "FROM") == 0)
+                		{
+	            			popParsedStringQueue(&queue);
+	            			int deleted = deleteFromTableScript(&queue, &clientAccountData[i]);
+	            			if (deleted >= 0)
+	            			{
+	            				sprintf(message, "MBerhasil menghapus %d data", deleted);
+	            			}
+	            			else
+	            			{
+	            				strcpy(message, "MScript error");
 	            			}
 	            		}
 	            		else
