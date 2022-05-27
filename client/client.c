@@ -112,6 +112,61 @@ int main(int argc, char** argv)
 		{
 			printf("%s\n", message + 1);
 		}
+		else if (message[0] == 'Q')
+		{
+			recv(socketConnectionFileDescriptor, message, sizeof(message), 0);
+			
+			int totalAttribute = 0;
+			memcpy(&totalAttribute, message, sizeof(totalAttribute));
+			
+			printf("|");
+			for (int i = 0; i < totalAttribute; i++)
+			{
+				recv(socketConnectionFileDescriptor, message, sizeof(message), 0);
+				printf("%10.10s|", message);
+			}
+			printf("\n|");
+			for (int i = 0; i < totalAttribute; i++)
+			{
+				printf("----------|");
+			}
+			
+			recv(socketConnectionFileDescriptor, message, sizeof(message), 0);
+			int totalRecord = 0;
+			memcpy(&totalRecord, message, sizeof(totalRecord));
+			
+			int finished = 0;
+			int printOut = 0;
+			
+			printf("\n|");
+			while(finished == 0)
+			{
+				recv(socketConnectionFileDescriptor, message, sizeof(message), 0);
+				if (message[0] == 'C')
+				{
+					printOut = 0;
+				}
+				else if (message[0] == 'R')
+				{
+					printf("\n|");
+				}
+				else if (message[0] == 'V' && printOut == 0)
+				{
+					printf("%10.10s|", message + 1);
+					printOut = 1;
+				}
+				else if (message[0] == 'F')
+				{
+					finished = 1;
+				}
+			}
+			
+			for (int i = 0; i < totalAttribute; i++)
+			{
+				printf("----------|");
+			}
+			printf("\n");
+		}
 	}
 	return 0;
 }

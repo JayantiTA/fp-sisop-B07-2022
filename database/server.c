@@ -230,9 +230,18 @@ void appendRecordBlockVector(RecordBlockVector *vector, RecordBlock *data)
 	vector->size += 1;
 }
 
+void popParsedStringQueue(ParsedStringQueue **queue)
+{
+	ParsedStringQueue *next = (*queue)->next;
+	free((*queue)->parsedString);
+	free(*queue);
+	*queue = next;
+}
+
 ParsedStringQueue* parseStringSQLScript(char str[])
 {
 	int scriptLength = strlen(str);
+	int lowerBound = -1;
 	int index = 0;
 	
 	ParsedStringQueue *root = NULL;
@@ -241,65 +250,62 @@ ParsedStringQueue* parseStringSQLScript(char str[])
 	int parentheses = 0;
 	int quotation = 0;
 	
-	for (int i = 0; i < scriptLength; i++)
+	
+	while(index < scriptLength)
 	{
-		if (str[i] != ' ' && str[i] != ';')
+		if (str[index] != ' ' && str[index] != ';' && str[index] != ',') 
 		{
-			for (int j = i + 1; j < scriptLength; j++)
+			if (lowerBound == -1)
 			{
-				if (str[j] == '(')
-				{
-					parentheses++;
-				}
-				else if (str[j] == ')')
-				{
-					parentheses--;
-				}
-				
-				if (str[j] == '\'')
-				{
-					quotation = quotation == 1 ? 0 : 1;
-				}
-				
-				if ((str[i] == '(' && str[j] == ')' && parentheses == 0) || (str[i] != '(' && (str[j] == ' ' || str[j] == ';') && quotation == 0))
-				{
-					newString = (ParsedStringQueue *)malloc(sizeof(ParsedStringQueue));
-					newString->next = NULL;
-					if (str[i] == '(')
-					{
-						i++;
-					}
-					
-					newString->parsedString = malloc(sizeof(char) * (j - i + 1));
-					memset(newString->parsedString, 0, sizeof(char) * (j - i + 1));
-					strncpy(newString->parsedString, str + i, (j - i));
-					
-					if (root == NULL)
-					{
-						root = newString;
-						walker = newString;
-					}
-					else
-					{
-						walker->next = newString;
-						walker = newString;
-					}
-					
-					i = j + 1;
-				}
+				lowerBound = index;
+			}
+			
+			if (str[index] == '(')
+			{
+				parentheses++;
+			}
+			else if (str[index] == ')')
+			{
+				parentheses--;
+			}
+			else if (str[index] == '\'')
+			{
+				quotation = quotation == 1 ? 0 : 1;
 			}
 		}
+		else if ((parentheses == 0 && quotation == 0) && lowerBound >= 0)
+		{
+			newString = (ParsedStringQueue *)malloc(sizeof(ParsedStringQueue));
+			newString->next = NULL;
+			
+			if (str[lowerBound] == '(')
+			{
+				lowerBound++;
+				index--;
+			}
+			
+			newString->parsedString = malloc(sizeof(char) * (index - lowerBound + 1));
+			memset(newString->parsedString, 0, sizeof(char) * (index - lowerBound + 1));
+			strncpy(newString->parsedString, str + lowerBound, (index - lowerBound));
+			
+			if (root == NULL)
+			{
+				root = newString;
+				walker = newString;
+			}
+			else
+			{
+				walker->next = newString;
+				walker = newString;
+			}
+			
+			lowerBound = -1;
+		}
+		
+		index++;
 	}
 	
 	return root;
-}
-
-void popParsedStringQueue(ParsedStringQueue **queue)
-{
-	ParsedStringQueue *next = (*queue)->next;
-	free((*queue)->parsedString);
-	free(*queue);
-	*queue = next;
 }
 
 int isStringAlphaNumeric(char str[])
@@ -313,6 +319,14 @@ int isStringAlphaNumeric(char str[])
 		}
 	}
 	return 1;
+}
+
+void convertToLower(char str[], size_t size)
+{
+	for (int i = 0; i < size; i++)
+	{
+		str[i] = tolower(str[i]);
+	}
 }
 
 int createTCPServerSocket()
@@ -413,8 +427,9 @@ int createTable(char database[], char table[], int attributeAmount, Attribute at
 
 int createDatabase(char databaseName[])
 {
+	
 	char filePath[1024];
-	sprintf(filePath, "%s/%s", __DATABASE_ROOT, databaseName); 
+	sprintf(filePath, "%s/%s", __DATABASE_ROOT, databaseName);
 	DIR *databaseDirectory = opendir(filePath);
 	if (databaseDirectory == NULL)
 	{
@@ -425,7 +440,7 @@ int createDatabase(char databaseName[])
 	return 0;
 }
 
-void determineAttributeDataType(Attribute attribute[], int *totalAttribute, char attributeType[])
+int determineAttributeDataType(Attribute attribute[], int *totalAttribute, char attributeType[])
 {
 	if (strcasecmp(attributeType, "INT") == 0)
 	{
@@ -483,7 +498,10 @@ void determineAttributeDataType(Attribute attribute[], int *totalAttribute, char
 		attribute[*totalAttribute].type = DATETIME;
 		attribute[*totalAttribute].size = sizeof(char) * 16;
 	}
-	*totalAttribute += 1;
+	else
+	{
+		return 0;
+	}
 }
 	
 int parseAttribute(Attribute attribute[], int *totalAttribute, char str[])
@@ -510,12 +528,18 @@ int parseAttribute(Attribute attribute[], int *totalAttribute, char str[])
 				{
 					return 0;
 				}
+				
+				convertToLower(attribute[*totalAttribute].attributeName, strlen(attribute[*totalAttribute].attributeName));
 			}
 			else
 			{
 				memset(attributeType, 0, sizeof(attributeType));
 				strncpy(attributeType, str + offset, i - offset);
-				determineAttributeDataType(attribute, totalAttribute, attributeType);
+				if (determineAttributeDataType(attribute, totalAttribute, attributeType) == 0)
+				{
+					return 0;
+				}
+				*totalAttribute += 1;
 				stateInserted = 0;
 			}
 			offset = i + 1;
@@ -533,7 +557,12 @@ int parseAttribute(Attribute attribute[], int *totalAttribute, char str[])
 				return 0;
 			}
 			strncpy(attributeType, str + offset, i - offset + 1);
-			determineAttributeDataType(attribute, totalAttribute, attributeType);
+			
+			if (determineAttributeDataType(attribute, totalAttribute, attributeType) == 0)
+			{
+				return 0;
+			}
+			*totalAttribute += 1;
 		}
 	}
 	
@@ -566,7 +595,7 @@ int createDatabaseRoot()
 		}
 		
 		attributeAmount = 0;
-		sprintf(tableCreateAttributeString, "accountID INT, databaseID INT");
+		sprintf(tableCreateAttributeString, "accountid INT, databaseID INT");
 		if (parseAttribute(attribute, &attributeAmount, tableCreateAttributeString) == 1)
 		{
 			createTable("admin", "database_permission", attributeAmount, attribute);
@@ -578,7 +607,7 @@ int createDatabaseRoot()
 }
 
 int insertIntoDatabaseTable(char database[], char table[], RecordBlock *newRecordBlock)
-{
+{	
 	char filePath[1024];
 	sprintf(filePath, "%s/%s/%s", __DATABASE_ROOT, database, table);
 	FILE *tableFile = fopen(filePath, "r+");
@@ -618,7 +647,7 @@ int insertIntoDatabaseTable(char database[], char table[], RecordBlock *newRecor
 }
 
 int readTableAttribute(char database[], char table[], int *totalAttribute, Attribute attribute[], int *recordBlockSize)
-{
+{	
 	char filePath[1024];
 	sprintf(filePath, "%s/%s/%s", __DATABASE_ROOT, database, table);
 	FILE *tableFile = fopen(filePath, "r");
@@ -663,6 +692,7 @@ int insertIntoDatabaseScript(ParsedStringQueue **queue, AccountData *clientAccou
 	{
 		char tableName[64];
 		strcpy(tableName, (*queue)->parsedString);
+		convertToLower(tableName, strlen(tableName));
 		
 		popParsedStringQueue(queue);
 		
@@ -773,11 +803,100 @@ int insertIntoDatabaseScript(ParsedStringQueue **queue, AccountData *clientAccou
 	return 0;
 }
 
+int parseWhereAttribute(char whereAttribute[], Attribute attribute[], int totalAttribute, void **whereValue, char str[])
+{
+	int strLength = strlen(str);		
+	int offset = 0;
+	int attributeParsed = 0;
+	
+	for (int i = 0; i < strLength; i++)
+	{
+		if (str[i] == '=')
+		{
+			attributeParsed = 1;
+			str[i]	= '\0';
+		}
+		else if (str[i] == '\'')
+		{
+			str[i]	= '\0';
+		}
+		else if (str[i] == ' ' && attributeParsed == 0)
+		{
+			str[i]	= '\0';
+		}
+	}
+	
+	strcpy(whereAttribute, str);
+	convertToLower(whereAttribute, strlen(whereAttribute));
+	
+	while(str[offset] != '\0' && offset < strLength)
+	{
+		offset++;
+	}
+	while(str[offset] == '\0' && offset < strLength)
+	{
+		offset++;
+	}
+	
+	if (offset >= strLength)
+	{
+		return 0;
+	}
+	
+	int deletedValueAttributeIndex = -1;
+	for (int i = 0; i < totalAttribute && deletedValueAttributeIndex == -1; i++)
+	{
+		if (strcmp(whereAttribute, attribute[i].attributeName) == 0)
+		{
+			deletedValueAttributeIndex = i;
+		}
+	}
+	
+	if (deletedValueAttributeIndex != -1)
+	{
+		*whereValue = malloc(attribute[deletedValueAttributeIndex].size);
+		memset(*whereValue, 0, attribute[deletedValueAttributeIndex].size);
+		
+		DataType deletedAttributeType = attribute[deletedValueAttributeIndex].type;
+		
+		if (
+			deletedAttributeType == STRING || deletedAttributeType == TIME || 
+			deletedAttributeType == DATE || deletedAttributeType == DATETIME
+		)
+		{
+			printf("%s\n", str + offset);
+			strcpy(*whereValue, str + offset);
+		}
+		else if (deletedAttributeType == INT)
+		{
+			int data;
+			sscanf(str + offset, "%d", &data);
+			memcpy(*whereValue, &data, sizeof(data));
+		}
+		else if (deletedAttributeType == LONG)
+		{
+			long long int data;
+			sscanf(str + offset, "%lld", &data);
+			memcpy(*whereValue, &data, sizeof(data));
+		}
+		else if (deletedAttributeType == DECIMAL)
+		{
+			double data;
+			sscanf(str + offset, "%lf", &data);
+			memcpy(*whereValue, &data, sizeof(data));
+		}
+		
+		return 1;
+	}
+	
+	return 0;
+}
+
 int selectReadTable(
 	char database[], char table[], RecordBlockVector *records, Attribute attribute[], int *attributeTotal, 
 	int *recordBlockSize, char *whereAttr, void *whereValue
 )
-{
+{	
 	char filePath[1024];
 	sprintf(filePath, "%s/%s/%s", __DATABASE_ROOT, database, table);
 	FILE *tableFile = fopen(filePath, "r");
@@ -865,8 +984,125 @@ int selectReadTable(
 	return 1;
 }
 
-void readTableDataBlock(char database[], char table[], int tableData[])
+int selectFromTableScript(ParsedStringQueue **queue, AccountData *clientAccount, Attribute tableAttribute[], 
+	int *totalAttribute, RecordBlockVector *records, int selectedAttribute[], int *amountOfSelectedAttribute)
 {
+	if (clientAccount->openningDatabase == 1)
+	{
+		char selectedAttributeName[__MAX_ATTRIBUTE_ON_TABLE][64];
+		*totalAttribute = 0;
+		int recordBlockSize = 0;
+		
+		int returnValue = 0;
+		int fromKeywordFound = 0;
+		*amountOfSelectedAttribute = 0;
+		
+		while(fromKeywordFound == 0 && *queue != NULL)
+		{
+			if (strcasecmp((*queue)->parsedString, "FROM") == 0)
+			{
+				fromKeywordFound = 1;
+			}
+			else
+			{
+				strcpy(selectedAttributeName[*amountOfSelectedAttribute], (*queue)->parsedString);
+				convertToLower(
+					selectedAttributeName[*amountOfSelectedAttribute], 
+					strlen(selectedAttributeName[*amountOfSelectedAttribute])
+				);
+				*amountOfSelectedAttribute += 1;
+			}
+			popParsedStringQueue(queue);
+		}
+		
+		if (fromKeywordFound == 1 && *queue != NULL)
+		{
+			char tableName[64];
+			strcpy(tableName, (*queue)->parsedString);
+			convertToLower(tableName, strlen(tableName));
+			
+			popParsedStringQueue(queue);
+			
+			if (*queue != NULL)
+			{
+				if (strcasecmp((*queue)->parsedString, "WHERE") == 0)
+				{
+					popParsedStringQueue(queue);
+					
+					if (*queue != NULL)
+					{
+						if (
+							readTableAttribute(
+								clientAccount->databaseName, tableName, totalAttribute, tableAttribute, &recordBlockSize
+							) == 1
+						)
+						{
+							char whereAttribute[64];
+							void *whereValue = NULL;
+							
+							if (parseWhereAttribute(whereAttribute, tableAttribute, *totalAttribute, &whereValue, (*queue)->parsedString) == 1)
+							{
+								*totalAttribute = 0;
+								selectReadTable(
+									clientAccount->databaseName, tableName, records, tableAttribute, totalAttribute, 
+									&recordBlockSize, whereAttribute, whereValue
+								);
+								returnValue = 1;
+							}
+						}
+					}
+				}
+			}
+			else
+			{
+				selectReadTable(
+					clientAccount->databaseName, tableName, records, tableAttribute, totalAttribute, 
+					&recordBlockSize, NULL, NULL
+				);
+				returnValue = 1;
+			}
+			
+			if (returnValue == 1)
+			{
+				int attributeFound = 0;
+				for (int i = 0; i < *amountOfSelectedAttribute; i++)
+				{
+					if (strcmp(selectedAttributeName[i], "*") == 0)
+					{
+						for (int j = 0; j < *totalAttribute; j++)
+						{
+							selectedAttribute[j] = j;
+						}
+						*amountOfSelectedAttribute = *totalAttribute;
+						attributeFound = *totalAttribute;
+						break;
+					}
+					for (int j = 0; j < *totalAttribute; j++)
+					{
+						if (strcmp(selectedAttributeName[i], tableAttribute[j].attributeName) == 0)
+						{
+							selectedAttribute[i] = j;
+							attributeFound += 1;
+							break;
+						}					
+					}
+				}
+				
+				if (attributeFound != *amountOfSelectedAttribute)
+				{
+					returnValue = 0;
+				}
+			}
+		}
+		
+		return returnValue;
+	}
+	return 0;
+}
+
+
+void readTableDataBlock(char database[], char table[], int tableData[])
+{	
 	char filePath[1024];
 	sprintf(filePath, "%s/%s/%s", __DATABASE_ROOT, database, table);
 	FILE *tableFile = fopen(filePath, "r");
@@ -948,13 +1184,14 @@ int createNewAccount(ParsedStringQueue **queue)
 	return 1;
 }
 
-int createNewDatabase(ParsedStringQueue **queue, int userID)
+int createDatabaseScript(ParsedStringQueue **queue, int userID)
 {
 	if (*queue != NULL)
 	{
 		char databaseName[64];
 		memset(databaseName, 0, sizeof(databaseName));
 		strcpy(databaseName, (*queue)->parsedString);
+		convertToLower(databaseName, strlen(databaseName));
 		
 		if (isStringAlphaNumeric(databaseName) == 1)
 		{
@@ -1012,6 +1249,7 @@ int grantPermissionUserOnDatabase(ParsedStringQueue **queue)
 	char databaseName[64];
 	memset(databaseName, 0, sizeof(databaseName));
 	strcpy(databaseName, (*queue)->parsedString);
+	convertToLower(databaseName, strlen(databaseName));
 	
 	RecordBlockVector recordBlockVector;
 	initRecordBlockVector(&recordBlockVector);
@@ -1071,7 +1309,7 @@ int grantPermissionUserOnDatabase(ParsedStringQueue **queue)
 	return 1;
 }
 
-int useDatabase(ParsedStringQueue **queue, AccountData *clientAccount)
+int useDatabaseScript(ParsedStringQueue **queue, AccountData *clientAccount)
 {
 	clientAccount->openningDatabase = 0;
 
@@ -1080,6 +1318,7 @@ int useDatabase(ParsedStringQueue **queue, AccountData *clientAccount)
 		char databaseName[64];
 		memset(databaseName, 0, sizeof(databaseName));
 		strcpy(databaseName, (*queue)->parsedString);
+		convertToLower(databaseName, strlen(databaseName));
 		
 		Attribute attribute[__MAX_ATTRIBUTE_ON_TABLE];
 		RecordBlockVector recordBlockVector;
@@ -1106,13 +1345,13 @@ int useDatabase(ParsedStringQueue **queue, AccountData *clientAccount)
 				recordBlockSize = 0;
 				selectReadTable(
 					"admin", "database_permission", &recordBlockVector, 
-					attribute, &attributeTotal, &recordBlockSize, "accountID", &clientAccount->id
+					attribute, &attributeTotal, &recordBlockSize, "accountid", &clientAccount->id
 				);
 				
 				int pointerOffsetForDatabaseID = 0;
 				for (int i = 0; i < attributeTotal; i++)
 				{
-					if (strcmp(attribute[i].attributeName, "databaseID") == 0)
+					if (strcmp(attribute[i].attributeName, "databaseid") == 0)
 					{
 						break;
 					}
@@ -1143,7 +1382,7 @@ int useDatabase(ParsedStringQueue **queue, AccountData *clientAccount)
 	}
 }
 
-int createTableByUser(ParsedStringQueue **queue, AccountData *clientAccountData)
+int createTableScript(ParsedStringQueue **queue, AccountData *clientAccountData)
 {
 	if (*queue == NULL || clientAccountData->openningDatabase != 1)
 	{
@@ -1151,6 +1390,7 @@ int createTableByUser(ParsedStringQueue **queue, AccountData *clientAccountData)
 	}
 	char tableName[64];
 	strcpy(tableName, (*queue)->parsedString);
+	convertToLower(tableName, strlen(tableName));
 	
 	if (isStringAlphaNumeric(tableName) == 1)
 	{
@@ -1158,7 +1398,7 @@ int createTableByUser(ParsedStringQueue **queue, AccountData *clientAccountData)
 		
 		Attribute attribute[__MAX_ATTRIBUTE_ON_TABLE];
 		int attributeAmount = 0;
-		if (parseAttribute(attribute, &attributeAmount, (*queue)->parsedString) == 1)
+		if (*queue != NULL && parseAttribute(attribute, &attributeAmount, (*queue)->parsedString) == 1)
 		{
 			if (createTable(clientAccountData->databaseName, tableName, attributeAmount, attribute) == 1)
 			{
@@ -1170,7 +1410,7 @@ int createTableByUser(ParsedStringQueue **queue, AccountData *clientAccountData)
 }
 
 int deleteFromDatabaseTable(char database[], char table[], char *whereAttr, void *whereValue)
-{
+{	
 	char filePath[1024];
 	sprintf(filePath, "%s/%s/%s", __DATABASE_ROOT, database, table);
 	FILE *tableFile = fopen(filePath, "r+");
@@ -1249,6 +1489,7 @@ int deleteFromTableScript(ParsedStringQueue **queue, AccountData *clientAccount)
 	{
 		char tableName[64];
 		memcpy(tableName, (*queue)->parsedString, sizeof(tableName));
+		convertToLower(tableName, strlen(tableName));
 	
 		popParsedStringQueue(queue);
 		
@@ -1275,103 +1516,22 @@ int deleteFromTableScript(ParsedStringQueue **queue, AccountData *clientAccount)
 						return -1;
 					}
 					
-					int strLength = strlen((*queue)->parsedString);
+					char whereAttribute[64];
+					void *deletedValue = NULL;
 					
-					int offset = 0;
-					char *parsedString = (*queue)->parsedString;
-					
-					int attributeParsed = 0;
-					
-					for (int i = 0; i < strLength; i++)
+					if (parseWhereAttribute(whereAttribute, attribute, totalAttribute, &deletedValue, (*queue)->parsedString) == 1)
 					{
-						if (parsedString[i] == '=')
-						{
-							attributeParsed = 1;
-							parsedString[i]	= '\0';
-						}
-						else if (parsedString[i] == '\'')
-						{
-							parsedString[i]	= '\0';
-						}
-						else if (parsedString[i] == ' ' && attributeParsed == 0)
-						{
-							parsedString[i]	= '\0';
-						}
-					}
-					
-					char attributeName[__MAX_ATTRIBUTE_NAME_LENGTH];
-					strcpy(attributeName, parsedString);
-					
-					while(parsedString[offset] != '\0' && offset < strLength)
-					{
-						offset++;
-					}
-					while(parsedString[offset] == '\0' && offset < strLength)
-					{
-						offset++;
-					}
-					
-					if (offset >= strLength)
-					{
-						return -1;
-					}
-					
-					int deletedValueAttributeIndex = -1;
-					for (int i = 0; i < totalAttribute && deletedValueAttributeIndex == -1; i++)
-					{
-						if (strcmp(attributeName, attribute[i].attributeName) == 0)
-						{
-							deletedValueAttributeIndex = i;
-						}
-					}
-					
-					if (deletedValueAttributeIndex != -1)
-					{
-						void *deletedValue = malloc(attribute[deletedValueAttributeIndex].size);
-						memset(deletedValue, 0, attribute[deletedValueAttributeIndex].size);
-						
-						DataType deletedAttributeType = attribute[deletedValueAttributeIndex].type;
-						
-						if (
-							deletedAttributeType == STRING || deletedAttributeType == TIME || 
-							deletedAttributeType == DATE || deletedAttributeType == DATETIME
-						)
-						{
-							printf("%s\n", parsedString + offset);
-							strcpy(deletedValue, parsedString + offset);
-						}
-						else if (deletedAttributeType == INT)
-						{
-							int data;
-							sscanf(parsedString + offset, "%d", &data);
-							memcpy(deletedValue, &data, sizeof(data));
-						}
-						else if (deletedAttributeType == LONG)
-						{
-							long long int data;
-							sscanf(parsedString + offset, "%lld", &data);
-							memcpy(deletedValue, &data, sizeof(data));
-						}
-						else if (deletedAttributeType == DECIMAL)
-						{
-							double data;
-							sscanf(parsedString + offset, "%lf", &data);
-							memcpy(deletedValue, &data, sizeof(data));
-						}
 						
 						returnValue = deleteFromDatabaseTable(
 							clientAccount->databaseName, tableName,
-							attribute[deletedValueAttributeIndex].attributeName, deletedValue
+							whereAttribute, deletedValue
 						);
 						
 						free(deletedValue);
 					}
 					else
 					{
-						returnValue = deleteFromDatabaseTable(
-							clientAccount->databaseName, tableName,
-							attributeName, NULL
-						);
+						returnValue = 0;
 					}
 				}
 			}
@@ -1386,22 +1546,22 @@ int deleteFromTableScript(ParsedStringQueue **queue, AccountData *clientAccount)
 	return -1;
 }
 
-int dropDatabase(ParsedStringQueue **queue, AccountData *clientAccount)
+int dropDatabaseScript(ParsedStringQueue **queue, AccountData *clientAccount)
 {
 	if (clientAccount->openningDatabase == 1 && strcasecmp(clientAccount->databaseName, (*queue)->parsedString) == 0)
 	{
-	
+		char databaseName[64];
+		memset(databaseName, 0, sizeof(databaseName));
+		strcpy(databaseName, (*queue)->parsedString);
+		convertToLower(databaseName, strlen(databaseName));
+		
 		char filePath[1024];
-		sprintf(filePath, "%s/%s", __DATABASE_ROOT, (*queue)->parsedString); 
+		sprintf(filePath, "%s/%s", __DATABASE_ROOT, databaseName); 
+		
 		DIR *databaseDirectory = opendir(filePath);
 		if (databaseDirectory != NULL)
 		{
 			rmdir(filePath);
-			
-			char databaseName[64];
-			memset(databaseName, 0, sizeof(databaseName));
-			strcpy(databaseName, (*queue)->parsedString);
-			
 			
 			Attribute attribute[__MAX_ATTRIBUTE_ON_TABLE];
 			RecordBlockVector records;
@@ -1423,7 +1583,7 @@ int dropDatabase(ParsedStringQueue **queue, AccountData *clientAccount)
 				result = 1;
 				
 				deleteFromDatabaseTable("admin", "database", "name", databaseName);
-				deleteFromDatabaseTable("admin", "database_permission", "databaseID", &databaseID);
+				deleteFromDatabaseTable("admin", "database_permission", "databaseid", &databaseID);
 				
 				clientAccount->openningDatabase = 0;
 			}
@@ -1443,10 +1603,12 @@ int dropDatabase(ParsedStringQueue **queue, AccountData *clientAccount)
 	}
 }
 
-int dropTable(ParsedStringQueue **queue, AccountData *clientAccount)
+int dropTableScript(ParsedStringQueue **queue, AccountData *clientAccount)
 {
 	if (clientAccount->openningDatabase == 1)
 	{
+		convertToLower((*queue)->parsedString, strlen((*queue)->parsedString));
+		
 		char filePath[1024];
 		sprintf(filePath, "%s/%s/%s", __DATABASE_ROOT, clientAccount->databaseName, (*queue)->parsedString);
 		return remove(filePath);
@@ -1455,7 +1617,7 @@ int dropTable(ParsedStringQueue **queue, AccountData *clientAccount)
 	return -1;
 }
 
-int dropColumn(ParsedStringQueue **queue,  AccountData *clientAccount)
+int dropColumnScript(ParsedStringQueue **queue,  AccountData *clientAccount)
 {
 	if (*queue == NULL || clientAccount->openningDatabase == 0)
 	{
@@ -1464,7 +1626,8 @@ int dropColumn(ParsedStringQueue **queue,  AccountData *clientAccount)
 	
 	char columnName[__MAX_ATTRIBUTE_NAME_LENGTH];
 	memset(columnName, 0, sizeof(columnName));
-	strcpy(columnName, (*queue)->parsedString); 
+	strcpy(columnName, (*queue)->parsedString);
+	convertToLower(columnName, strlen(columnName));
 	
 	popParsedStringQueue(queue);
 	
@@ -1482,6 +1645,7 @@ int dropColumn(ParsedStringQueue **queue,  AccountData *clientAccount)
 	
 	char tableName[64];
 	strcpy(tableName, (*queue)->parsedString);
+	convertToLower(tableName, strlen(tableName));
 
 	char filePath[1024];
 	char filePathForTemp[1024];
@@ -1530,8 +1694,8 @@ int dropColumn(ParsedStringQueue **queue,  AccountData *clientAccount)
 			if (deletedAttributeIndex != tableData[0] - 1)
 			{
 				fwrite(
-					attributesBlock + sizeof(attributesBlock[0]) * (deletedAttributeIndex + 1), 
-					sizeof(attributesBlock[0]), tableData[0] - 1 - deletedAttributeIndex, newFile
+					&attributesBlock[deletedAttributeIndex + 1], sizeof(attributesBlock[0]), 
+					tableData[0] - 1 - deletedAttributeIndex, newFile
 				);
 			}
 			
@@ -1740,7 +1904,7 @@ int main(int argc, char **argv)
 	            		else if (queue != NULL && strcasecmp(queue->parsedString, "DATABASE") == 0)
                 		{
 	            			popParsedStringQueue(&queue);
-	            			if (createNewDatabase(&queue, clientAccountData[i].id) == 1)
+	            			if (createDatabaseScript(&queue, clientAccountData[i].id) == 1)
 	            			{
 	            				strcpy(message, "MBerhasil membuat database baru");
 	            			}
@@ -1752,7 +1916,7 @@ int main(int argc, char **argv)
 	            		else if (queue != NULL && strcasecmp(queue->parsedString, "TABLE") == 0)
                 		{
 	            			popParsedStringQueue(&queue);
-	            			if (createTableByUser(&queue, &(clientAccountData[i])) == 1)
+	            			if (createTableScript(&queue, &(clientAccountData[i])) == 1)
 	            			{
 	            				strcpy(message, "MBerhasil membuat table baru");
 	            			}
@@ -1773,7 +1937,7 @@ int main(int argc, char **argv)
 		            	if (queue != NULL && strcasecmp(queue->parsedString, "DATABASE") == 0)
                 		{
 	            			popParsedStringQueue(&queue);
-	            			if (dropDatabase(&queue, &clientAccountData[i]) == 1)
+	            			if (dropDatabaseScript(&queue, &clientAccountData[i]) == 1)
 	            			{
 	            				strcpy(message, "MBerhasil drop database");
 	            			}
@@ -1785,7 +1949,7 @@ int main(int argc, char **argv)
 	            		else if (queue != NULL && strcasecmp(queue->parsedString, "TABLE") == 0)
                 		{
 	            			popParsedStringQueue(&queue);
-	            			if (dropTable(&queue, &(clientAccountData[i])) == 0)
+	            			if (dropTableScript(&queue, &(clientAccountData[i])) == 0)
 	            			{
 	            				strcpy(message, "MBerhasil drop table");
 	            			}
@@ -1797,7 +1961,7 @@ int main(int argc, char **argv)
 	            		else if (queue != NULL && strcasecmp(queue->parsedString, "COLUMN") == 0)
                 		{
 	            			popParsedStringQueue(&queue);
-	            			if (dropColumn(&queue, &(clientAccountData[i])) == 1)
+	            			if (dropColumnScript(&queue, &(clientAccountData[i])) == 1)
 	            			{
 	            				strcpy(message, "MBerhasil drop column");
 	            			}
@@ -1836,7 +2000,7 @@ int main(int argc, char **argv)
                 	{
 	            		popParsedStringQueue(&queue);
 	            		
-	            		if (useDatabase(&queue, &(clientAccountData[i])) == 1)
+	            		if (useDatabaseScript(&queue, &(clientAccountData[i])) == 1)
 	            		{
             				strcpy(message, "MBerhasil membuka database");
             			}
@@ -1882,6 +2046,136 @@ int main(int argc, char **argv)
 	            			{
 	            				strcpy(message, "MScript error");
 	            			}
+	            		}
+	            		else
+	            		{
+        					strcpy(message, "MScript error");
+	            		}
+		            }
+		            else if (queue != NULL && strcasecmp(queue->parsedString, "SELECT") == 0)
+                	{
+	            		popParsedStringQueue(&queue);
+	            		
+		            	if (queue != NULL)
+                		{
+							Attribute tableAttribute[__MAX_ATTRIBUTE_ON_TABLE];
+                			int totalAttribute = 0;
+                			RecordBlockVector records;
+                			initRecordBlockVector(&records);
+                			int selectedAttribute[__MAX_ATTRIBUTE_ON_TABLE];
+                			int amountOfSelectedAttribute = 0;
+                			
+	            			if (
+	            				selectFromTableScript(
+	            					&queue, &clientAccountData[i], tableAttribute, &totalAttribute, 
+	            					&records, selectedAttribute, &amountOfSelectedAttribute
+	            				) == 1
+	            			)
+	            			{
+	            				sprintf(message, "Q");
+                				send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
+	            				
+	            				memcpy(message, &amountOfSelectedAttribute, sizeof(amountOfSelectedAttribute));
+                				send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
+	            				
+	            				for (int j = 0; j < amountOfSelectedAttribute; j++)
+	            				{
+	            					sprintf(message, "%s", tableAttribute[selectedAttribute[j]].attributeName);
+                					send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
+	            				}
+	            				
+	            				memcpy(message, &(records.size), sizeof(records.size));
+                				send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
+                				
+                				int offsetDataOfAttribute[__MAX_ATTRIBUTE_ON_TABLE];
+                				int offsetData = 0;
+                				
+                				for (int j = 0; j < totalAttribute; j++)
+                				{
+                					offsetDataOfAttribute[j] = offsetData;
+                					offsetData += tableAttribute[j].size;
+                				}
+                				
+                				for (int j = 0; j < records.size; j++)
+	            				{
+	            					for (int k = 0; k < amountOfSelectedAttribute; k++)
+	            					{
+	            						
+	            						if (tableAttribute[selectedAttribute[k]].type == STRING)
+	            						{
+			        						int copiedCharacter = 0;
+			        						int bufferFilled = 1;
+			        						message[0] = 'V';
+		            						while(copiedCharacter < tableAttribute[selectedAttribute[k]].size)
+		            						{
+		            							message[bufferFilled] = (
+		            								(char *)getRecordBlockVector(&records)[j].data)[
+		            									offsetDataOfAttribute[selectedAttribute[k]] + copiedCharacter];
+		            							bufferFilled++;
+		            							copiedCharacter++;
+		            							
+		            							if (bufferFilled == __DATA_BUFFER - 1 || copiedCharacter == tableAttribute[selectedAttribute[k]].size)
+		            							{
+		            								message[bufferFilled] = '\0';
+                									send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
+		            								bufferFilled = 1;
+                									message[0] = 'V';
+		            							}
+		            						}
+		        						}
+		        						else if (tableAttribute[selectedAttribute[k]].type == INT)
+		        						{
+		        							sprintf(message, "V%d", *(int *)(getRecordBlockVector(&records)[j].data + offsetDataOfAttribute[selectedAttribute[k]])); 
+    										send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
+		        						}
+		        						else if (tableAttribute[selectedAttribute[k]].type == LONG)
+		        						{
+		        							sprintf(message, "V%lld", *(long long int *)(getRecordBlockVector(&records)[j].data + offsetDataOfAttribute[selectedAttribute[k]])); 
+    										send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
+		        						}
+		        						else if (tableAttribute[selectedAttribute[k]].type == DECIMAL)
+		        						{
+		        							sprintf(message, "V%lf", *(double *)(getRecordBlockVector(&records)[j].data + offsetDataOfAttribute[selectedAttribute[k]])); 
+    										send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
+		        						}
+		        						else if (tableAttribute[selectedAttribute[k]].type == DATE)
+		        						{
+		        							char date[tableAttribute[selectedAttribute[k]].size + 1];
+		        							strncpy(date, getRecordBlockVector(&records)[j].data + offsetDataOfAttribute[selectedAttribute[k]], tableAttribute[selectedAttribute[k]].size);
+		        							sprintf(message, "V%s", date); 
+    										send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
+		        						}
+		        						else if (tableAttribute[selectedAttribute[k]].type == TIME)
+		        						{
+		        							char time[tableAttribute[selectedAttribute[k]].size + 1];
+		        							strncpy(time, getRecordBlockVector(&records)[j].data + offsetDataOfAttribute[selectedAttribute[k]], tableAttribute[selectedAttribute[k]].size);
+		        							sprintf(message, "V%s", time); 
+    										send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
+		        						}
+		        						else if (tableAttribute[selectedAttribute[k]].type == DATETIME)
+		        						{
+		        							char datetime[tableAttribute[selectedAttribute[k]].size + 1];
+		        							strncpy(datetime, getRecordBlockVector(&records)[j].data + offsetDataOfAttribute[selectedAttribute[k]], tableAttribute[selectedAttribute[k]].size);
+		        							sprintf(message, "V%s", datetime); 
+    										send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
+		        						}
+		        						sprintf(message, "C"); 
+    									send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
+	            					}
+	            					sprintf(message, "R"); 
+									send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
+	            				}
+	            				printf("TES\n");
+	            				
+            					sprintf(message, "F"); 
+	            				
+	            			}
+	            			else
+	            			{
+	            				strcpy(message, "MScript error");
+	            			}
+	            			
+	            			delRecordBlockVector(&records);
 	            		}
 	            		else
 	            		{
