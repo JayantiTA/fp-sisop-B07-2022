@@ -803,7 +803,7 @@ int insertIntoDatabaseScript(ParsedStringQueue **queue, AccountData *clientAccou
 	return 0;
 }
 
-int parseWhereAttribute(char whereAttribute[], Attribute attribute[], int totalAttribute, void **whereValue, char str[])
+int parseAttributeAndGetValueFromString(char parsedAttribute[], Attribute attribute[], int totalAttribute, void **value, char str[])
 {
 	int strLength = strlen(str);		
 	int offset = 0;
@@ -826,8 +826,8 @@ int parseWhereAttribute(char whereAttribute[], Attribute attribute[], int totalA
 		}
 	}
 	
-	strcpy(whereAttribute, str);
-	convertToLower(whereAttribute, strlen(whereAttribute));
+	strcpy(parsedAttribute, str);
+	convertToLower(parsedAttribute, strlen(parsedAttribute));
 	
 	while(str[offset] != '\0' && offset < strLength)
 	{
@@ -846,7 +846,7 @@ int parseWhereAttribute(char whereAttribute[], Attribute attribute[], int totalA
 	int deletedValueAttributeIndex = -1;
 	for (int i = 0; i < totalAttribute && deletedValueAttributeIndex == -1; i++)
 	{
-		if (strcmp(whereAttribute, attribute[i].attributeName) == 0)
+		if (strcmp(parsedAttribute, attribute[i].attributeName) == 0)
 		{
 			deletedValueAttributeIndex = i;
 		}
@@ -854,8 +854,8 @@ int parseWhereAttribute(char whereAttribute[], Attribute attribute[], int totalA
 	
 	if (deletedValueAttributeIndex != -1)
 	{
-		*whereValue = malloc(attribute[deletedValueAttributeIndex].size);
-		memset(*whereValue, 0, attribute[deletedValueAttributeIndex].size);
+		*value = malloc(attribute[deletedValueAttributeIndex].size);
+		memset(*value, 0, attribute[deletedValueAttributeIndex].size);
 		
 		DataType deletedAttributeType = attribute[deletedValueAttributeIndex].type;
 		
@@ -865,25 +865,25 @@ int parseWhereAttribute(char whereAttribute[], Attribute attribute[], int totalA
 		)
 		{
 			printf("%s\n", str + offset);
-			strcpy(*whereValue, str + offset);
+			strcpy(*value, str + offset);
 		}
 		else if (deletedAttributeType == INT)
 		{
 			int data;
 			sscanf(str + offset, "%d", &data);
-			memcpy(*whereValue, &data, sizeof(data));
+			memcpy(*value, &data, sizeof(data));
 		}
 		else if (deletedAttributeType == LONG)
 		{
 			long long int data;
 			sscanf(str + offset, "%lld", &data);
-			memcpy(*whereValue, &data, sizeof(data));
+			memcpy(*value, &data, sizeof(data));
 		}
 		else if (deletedAttributeType == DECIMAL)
 		{
 			double data;
 			sscanf(str + offset, "%lf", &data);
-			memcpy(*whereValue, &data, sizeof(data));
+			memcpy(*value, &data, sizeof(data));
 		}
 		
 		return 1;
@@ -1040,7 +1040,7 @@ int selectFromTableScript(ParsedStringQueue **queue, AccountData *clientAccount,
 							char whereAttribute[64];
 							void *whereValue = NULL;
 							
-							if (parseWhereAttribute(whereAttribute, tableAttribute, *totalAttribute, &whereValue, (*queue)->parsedString) == 1)
+							if (parseAttributeAndGetValueFromString(whereAttribute, tableAttribute, *totalAttribute, &whereValue, (*queue)->parsedString) == 1)
 							{
 								*totalAttribute = 0;
 								selectReadTable(
@@ -1048,6 +1048,8 @@ int selectFromTableScript(ParsedStringQueue **queue, AccountData *clientAccount,
 									&recordBlockSize, whereAttribute, whereValue
 								);
 								returnValue = 1;
+								
+								free(whereValue);
 							}
 						}
 					}
@@ -1519,7 +1521,7 @@ int deleteFromTableScript(ParsedStringQueue **queue, AccountData *clientAccount)
 					char whereAttribute[64];
 					void *deletedValue = NULL;
 					
-					if (parseWhereAttribute(whereAttribute, attribute, totalAttribute, &deletedValue, (*queue)->parsedString) == 1)
+					if (parseAttributeAndGetValueFromString(whereAttribute, attribute, totalAttribute, &deletedValue, (*queue)->parsedString) == 1)
 					{
 						
 						returnValue = deleteFromDatabaseTable(
@@ -1741,6 +1743,132 @@ int dropColumnScript(ParsedStringQueue **queue,  AccountData *clientAccount)
 		return 1;
 	}	
 	return 0;
+}
+
+int updateTable(char database[], char table[], char setAttr[], void *setValue, char whereAttr[], void *whereValue)
+{
+	char filePath[1024];
+	sprintf(filePath, "%s/%s/%s", __DATABASE_ROOT, database, table);
+	FILE *tableFile = fopen(filePath, "r");
+	
+	if (tableFile != NULL)
+	{
+		fclose(tableFile);
+		
+		int returnValue = -1;
+		
+		int totalAttribute = 0;
+		int recordBlockSize = 0;
+		Attribute tableAttribute[__MAX_ATTRIBUTE_ON_TABLE];
+
+		RecordBlockVector effectedBlockRecords;
+		initRecordBlockVector(&effectedBlockRecords);
+				
+		if (
+			selectReadTable(
+				database, table, &effectedBlockRecords, tableAttribute, &totalAttribute, 
+				&recordBlockSize, whereAttr, whereValue
+			) == 1
+		)
+		{
+			int setAttributeIndex = -1;
+			int setAttributeOffset = 0;
+			
+			for (int i = 0; i < totalAttribute && setAttributeIndex == -1; i++)
+			{
+				if (strcasecmp(setAttr, tableAttribute[i].attributeName) == 0)
+				{
+					setAttributeIndex = i;
+				}
+				else
+				{
+					setAttributeOffset += tableAttribute[i].size;
+				}
+			}
+			
+			if (setAttributeIndex != -1)
+			{
+				deleteFromDatabaseTable(database, table, whereAttr, whereValue);
+				
+				for (int i = 0; i < effectedBlockRecords.size; i++)
+				{
+					memcpy(
+						getRecordBlockVector(&effectedBlockRecords)[i].data + setAttributeOffset, 
+						setValue, tableAttribute[setAttributeIndex].size
+					);
+					insertIntoDatabaseTable(database, table, &(getRecordBlockVector(&effectedBlockRecords)[i]));
+				}
+				returnValue = effectedBlockRecords.size;
+			}
+		}
+		
+		delRecordBlockVector(&effectedBlockRecords);
+		
+		return returnValue;
+	}
+	return -1;
+}
+
+int updateTableScript(ParsedStringQueue **queue, AccountData *clientAccount)
+{
+	if (*queue != NULL && clientAccount->openningDatabase == 1)
+	{
+		char tableName[64];
+		strcpy(tableName, (*queue)->parsedString);
+		convertToLower(tableName, strlen(tableName));
+				
+		popParsedStringQueue(queue);
+		
+		int returnValue = -1;
+		
+		if (*queue != NULL && strcasecmp((*queue)->parsedString, "SET") == 0)
+		{
+			popParsedStringQueue(queue);
+			
+			char setAttribute[64];
+			int totalAttribute = 0;
+			int recordBlockSize = 0;
+			Attribute tableAttribute[__MAX_ATTRIBUTE_ON_TABLE];
+			void *setValue = NULL;
+			printf("%s\n", (*queue)->parsedString);
+			if (
+				*queue != NULL &&
+				readTableAttribute(clientAccount->databaseName, tableName, &totalAttribute, tableAttribute, &recordBlockSize) == 1 &&
+				parseAttributeAndGetValueFromString(setAttribute, tableAttribute, totalAttribute, &setValue, (*queue)->parsedString) == 1
+			)
+			{
+				popParsedStringQueue(queue);
+				
+				if (*queue != NULL && strcasecmp((*queue)->parsedString, "WHERE") == 0)
+				{
+					popParsedStringQueue(queue);
+					
+					char whereAttribute[64];
+					void *whereValue = NULL;
+					
+					if (
+						*queue != NULL &&
+						parseAttributeAndGetValueFromString(whereAttribute, tableAttribute, totalAttribute, &whereValue, (*queue)->parsedString) == 1
+					)
+					{
+						returnValue = updateTable(clientAccount->databaseName, tableName, setAttribute, setValue, whereAttribute, whereValue);
+						free(whereValue);
+					}
+				} 
+				else if (*queue == NULL)
+				{
+					returnValue = updateTable(clientAccount->databaseName, tableName, setAttribute, setValue, NULL, NULL);
+				}
+				
+				
+				free(setValue);
+			}
+			
+		}
+		
+		return returnValue;
+	}
+	return -1;
 }
 
 int main(int argc, char **argv) 
@@ -2165,7 +2293,6 @@ int main(int argc, char **argv)
 	            					sprintf(message, "R"); 
 									send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
 	            				}
-	            				printf("TES\n");
 	            				
             					sprintf(message, "F"); 
 	            				
@@ -2182,6 +2309,20 @@ int main(int argc, char **argv)
         					strcpy(message, "MScript error");
 	            		}
 		            }
+		            else if (queue != NULL && strcasecmp(queue->parsedString, "UPDATE") == 0)
+                	{
+	            		popParsedStringQueue(&queue);
+	            		
+	            		int updateResult = updateTableScript(&queue, &clientAccountData[i]);
+	            		if (updateResult >= 0)
+	            		{
+            				sprintf(message, "MBerhasil mengganti %d data", updateResult);
+	            		}
+	            		else
+	            		{
+        					strcpy(message, "MScript error");
+	            		}
+            		}
 		            else
 		            {
         				strcpy(message, "MScript error");
