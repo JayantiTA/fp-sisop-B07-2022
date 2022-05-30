@@ -1,10 +1,12 @@
 #include "stdio.h"
 #include "stdlib.h"
 #include "string.h"
+#include "time.h"
 #include "errno.h"
 #include "unistd.h"
 #include "netdb.h"
 #include "netinet/in.h"
+#include "sys/time.h"
 
 #ifndef __DATA_BUFFER
 	#define __DATA_BUFFER 4096
@@ -62,6 +64,29 @@ void constructLoginMessage(char message[], char username[], char password[])
 	sprintf(&message[1 + 2 * integerSize], "%s%s", username, password);
 }
 
+void writeLog(char username[], char message[])
+{
+	FILE *fileWriterLog = fopen("./client.log", "a+");
+	time_t currentTime = time(NULL);
+	struct tm currentLocalTime = *localtime(&currentTime);
+	char logText[4096];
+	
+	sprintf(logText, "%04d-%02d-%02d %02d:%02d:%02d:%s:%s",
+		currentLocalTime.tm_year + 1900,
+		currentLocalTime.tm_mon,
+		currentLocalTime.tm_mday, 
+		currentLocalTime.tm_hour,
+		currentLocalTime.tm_min,
+		currentLocalTime.tm_sec,
+		username,
+		message
+	);
+
+	fprintf(fileWriterLog, "%s\n", logText);
+	
+	fclose(fileWriterLog);
+}
+
 int main(int argc, char** argv) 
 {
 	if (getuid() != __ROOT_ID && (argc < 5 || strcmp(argv[1], "-u") != 0 || strcmp(argv[3], "-p") != 0)) 
@@ -76,6 +101,7 @@ int main(int argc, char** argv)
 	}
 	
 	char message[__DATA_BUFFER];
+	char command[__DATA_BUFFER];
 	char username[64];
 	if (getuid() == __ROOT_ID)
 	{
@@ -105,12 +131,20 @@ int main(int argc, char** argv)
 	while(1)
 	{
 		scanf(" %[^\n]", message);
+		if (message != NULL)
+		{
+			strcpy(command, message);
+		}
 		send(socketConnectionFileDescriptor, message, sizeof(message), 0);
 		recv(socketConnectionFileDescriptor, message, sizeof(message), 0);
 		
 		if (message[0] == 'M')
 		{
 			printf("%s\n", message + 1);
+			if (message[1] == 'B')
+			{
+				writeLog(username, command);
+			}
 		}
 		else if (message[0] == 'Q')
 		{
