@@ -331,40 +331,40 @@ void convertToLower(char str[], size_t size)
 
 int createTCPServerSocket()
 {
-    struct sockaddr_in socketAddress;
-    int socketFileDescriptor = -1;
+	struct sockaddr_in socketAddress;
+	int socketFileDescriptor = -1;
 
 	socketFileDescriptor = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (socketFileDescriptor == -1) {
-        fprintf(stderr, "Error: [%s]\n", strerror(errno));
-        return -1;
-    }
+	if (socketFileDescriptor == -1) {
+		fprintf(stderr, "Error: [%s]\n", strerror(errno));
+		return -1;
+	}
 
-    socketAddress.sin_family = AF_INET;         
-    socketAddress.sin_port = htons(__SERVER_PORT);     
-    socketAddress.sin_addr.s_addr = INADDR_ANY; 
+	socketAddress.sin_family = AF_INET;         
+	socketAddress.sin_port = htons(__SERVER_PORT);     
+	socketAddress.sin_addr.s_addr = INADDR_ANY; 
 
-    if (bind(socketFileDescriptor, (struct sockaddr *)&socketAddress, sizeof(struct sockaddr_in)) != 0) {
-        fprintf(stderr, "Error: [%s]\n", strerror(errno));
-        close(socketFileDescriptor);
-        return -1;
-    }
+	if (bind(socketFileDescriptor, (struct sockaddr *)&socketAddress, sizeof(struct sockaddr_in)) != 0) {
+		fprintf(stderr, "Error: [%s]\n", strerror(errno));
+		close(socketFileDescriptor);
+		return -1;
+	}
 
-    if (listen(socketFileDescriptor, 64) != 0) {
-        fprintf(stderr, "Error: [%s]\n", strerror(errno));
-        close(socketFileDescriptor);
-        return -1;
-    }
+	if (listen(socketFileDescriptor, 64) != 0) {
+		fprintf(stderr, "Error: [%s]\n", strerror(errno));
+		close(socketFileDescriptor);
+		return -1;
+	}
 
-    return socketFileDescriptor;
+	return socketFileDescriptor;
 }
 
 void setupEpollConnection(int epollFileDescriptor, int newFileDescriptor, struct epoll_event * epollEvent) 
 {
-    epollEvent->events = EPOLLIN;
-    epollEvent->data.fd = newFileDescriptor;
+	epollEvent->events = EPOLLIN;
+	epollEvent->data.fd = newFileDescriptor;
 
-    epoll_ctl(epollFileDescriptor, EPOLL_CTL_ADD, newFileDescriptor, epollEvent);
+	epoll_ctl(epollFileDescriptor, EPOLL_CTL_ADD, newFileDescriptor, epollEvent);
 }
 
 int qsortFunctionForAttribute(const void *a, const void *b)
@@ -427,7 +427,6 @@ int createTable(char database[], char table[], int attributeAmount, Attribute at
 
 int createDatabase(char databaseName[])
 {
-	
 	char filePath[1024];
 	sprintf(filePath, "%s/%s", __DATABASE_ROOT, databaseName);
 	DIR *databaseDirectory = opendir(filePath);
@@ -482,19 +481,16 @@ int determineAttributeDataType(Attribute attribute[], int *totalAttribute, char 
 	}
 	else if (strcasecmp(attributeType, "TIME") == 0)
 	{
-		
 		attribute[*totalAttribute].type = TIME;
 		attribute[*totalAttribute].size = sizeof(char) * 5;
 	}
 	else if (strcasecmp(attributeType, "DATE") == 0)
 	{
-		
 		attribute[*totalAttribute].type = DATE;
 		attribute[*totalAttribute].size = sizeof(char) * 10;
 	}
 	else if (strcasecmp(attributeType, "DATETIME") == 0)
 	{
-		
 		attribute[*totalAttribute].type = DATETIME;
 		attribute[*totalAttribute].size = sizeof(char) * 16;
 	}
@@ -797,7 +793,6 @@ int insertIntoDatabaseScript(ParsedStringQueue **queue, AccountData *clientAccou
 				delRecordBlock(&recordBlockForNewData);
 				return result;
 			}
-			
 		}
 	}
 	return 0;
@@ -1570,11 +1565,11 @@ int dropDatabaseScript(ParsedStringQueue **queue, AccountData *clientAccount)
 			int recordBlockSize = 0;
 			initRecordBlockVector(&records);
 			selectReadTable(
-        		"admin", "database", &records, attribute, &attributeTotal, 
-        		&recordBlockSize , "name", databaseName
-        	);
-        	
-        	int result = 0;
+				"admin", "database", &records, attribute, &attributeTotal, 
+				&recordBlockSize , "name", databaseName
+			);
+			
+			int result = 0;
 			
 			if (records.size == 1)
 			{
@@ -1870,484 +1865,454 @@ int updateTableScript(ParsedStringQueue **queue, AccountData *clientAccount)
 }
 
 int main(int argc, char **argv) 
-{/*
-	pid_t pidDaemonProcess = 0, sidDaemonProcess;
+{  	 
+	struct sockaddr_in newConnectionAddr;
+	int serverFileDescriptor;
+	int newConnectionFileDescriptor, temp_fd;
+	socklen_t addrlen;
 	
-	pidDaemonProcess = fork();
-	
-	if (pidDaemonProcess < 0)
-	{
-		exit(EXIT_FAILURE);
-	}
-	else if (pidDaemonProcess > 0)
-	{
-		exit(EXIT_SUCCESS);
-	}
-	
-	umask(0);
-	
-	sidDaemonProcess = setsid();
-	
-	if (sidDaemonProcess < 0)
-	{
-		exit(EXIT_FAILURE);
-	}
-	
-	close(STDIN_FILENO);
-	close(STDOUT_FILENO);
-	close(STDERR_FILENO);
-   	*/
-   	 
-    struct sockaddr_in newConnectionAddr;
-    int serverFileDescriptor;
-    int newConnectionFileDescriptor, temp_fd;
-    socklen_t addrlen;
-    
-    struct epoll_event clientsList[__MAX_CONNECTIONS];
-    struct epoll_event epollEventNewConnection;
-    int epollEventCounter = 0;
-    int epollFileDescriptor = epoll_create(__MAX_CONNECTIONS + 1);
-    serverFileDescriptor = createTCPServerSocket(); 
+	struct epoll_event clientsList[__MAX_CONNECTIONS];
+	struct epoll_event epollEventNewConnection;
+	int epollEventCounter = 0;
+	int epollFileDescriptor = epoll_create(__MAX_CONNECTIONS + 1);
+	serverFileDescriptor = createTCPServerSocket(); 
 
-    AccountData clientAccountData[__MAX_CONNECTIONS];
+	AccountData clientAccountData[__MAX_CONNECTIONS];
 	memset(clientAccountData, 0, sizeof(clientAccountData));
 
-    if (serverFileDescriptor == -1) 
-    {
-        return -1; 
-    }   
+	if (serverFileDescriptor == -1) 
+	{
+			return -1; 
+	}   
 
-    setupEpollConnection(epollFileDescriptor, serverFileDescriptor, &epollEventNewConnection);
+	setupEpollConnection(epollFileDescriptor, serverFileDescriptor, &epollEventNewConnection);
 
-    char message[__DATA_BUFFER];
-    
-    createDatabaseRoot();
-    
-    while (1) 
-    {
-        epollEventCounter = epoll_wait(epollFileDescriptor, clientsList, __MAX_CONNECTIONS, __SERVER_TIME_OUT_MSEC);
+	char message[__DATA_BUFFER];
+	
+	createDatabaseRoot();
+	
+	while (1) 
+	{
+		epollEventCounter = epoll_wait(epollFileDescriptor, clientsList, __MAX_CONNECTIONS, __SERVER_TIME_OUT_MSEC);
 
-        for (int i = 0; i < epollEventCounter ; i++)
-        {
-            if (clientsList[i].data.fd == serverFileDescriptor) 
-            { 
-                newConnectionFileDescriptor = accept(serverFileDescriptor, (struct sockaddr*)&newConnectionAddr, &addrlen);
+		for (int i = 0; i < epollEventCounter ; i++)
+		{
+			if (clientsList[i].data.fd == serverFileDescriptor) 
+			{ 
+				newConnectionFileDescriptor = accept(serverFileDescriptor, (struct sockaddr*)&newConnectionAddr, &addrlen);
 
-                if (newConnectionFileDescriptor >= 0) 
-                {
-                    setupEpollConnection(epollFileDescriptor, newConnectionFileDescriptor, &epollEventNewConnection);
-                }
-                else 
-                {
-                	printf("Failed to accept new connection\n");
-                }
-            }
-            else if (clientsList[i].events & EPOLLIN && clientsList[i].data.fd >= 0) 
-            {
-                if (recv(clientsList[i].data.fd, message, __DATA_BUFFER, 0) == 0)
-                {
-    				epoll_ctl(epollFileDescriptor, EPOLL_CTL_DEL, clientsList[i].data.fd, &epollEventNewConnection);
-                }
-                else
-                {
-		            if (message[0] == 'L')
-		            {
-		            	int usernameLength;
-		            	int passwordLength;
-		            	size_t intSize = sizeof(usernameLength);
-		            	
-		            	memcpy(&usernameLength, message + 1, intSize);
-		            	memcpy(&passwordLength, message + 1 + intSize, intSize);
-		            	
-		            	char username[64];
-		            	char password[64];
-		            	
-		            	memset(username, 0, 64);
-		            	memset(password, 0, 64);
-		            	
-		            	memcpy(username, message + 1 + intSize * 2, usernameLength);
-		            	memcpy(password, message + 1 + intSize * 2 + usernameLength, passwordLength);
-		            	
-		            	RecordBlockVector records;
-		            	initRecordBlockVector(&records);
-		            	Attribute attribute[__MAX_ATTRIBUTE_ON_TABLE];
-		            	int attributeTotal = 0;
-		            	int recordBlockSize = 0;
-		            	
-		            	char usernameAttribute[64];
-		            	memset(usernameAttribute, 0, sizeof(usernameAttribute));
-		            	strcpy(usernameAttribute, "username");
-		            	
-		            	selectReadTable(
-		            		"admin", "account", &records, attribute, &attributeTotal, 
-		            		&recordBlockSize , usernameAttribute, username
-		            	);
-		            	
-		            	if (records.size == 1) 
-		            	{
-		        			if (memcmp(password, records.record[0].data + attribute[0].size + attribute[1].size, attribute[2].size) == 0)
-		        			{
-				        		strcpy(message, "success");
-				        		send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
-				        		
-				        		memcpy(&(clientAccountData[i].id), records.record[0].data, sizeof(clientAccountData[i].id));
-				        		clientAccountData[i].openningDatabase = 0;
-		            		}
-		            		else
-		            		{
-				        		strcpy(message, "failed");
-				        		send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
-		            		}
-		            	}
-		            	else
-		            	{
-		            		strcpy(message, "failed");
-		            		send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
-		            	}
-		            	
-		            	delRecordBlockVector(&records);
-		            }
-		            else if (strcmp(message, "root") == 0)
-		            {
-		            	clientAccountData[i].id = 0;
-		            	clientAccountData[i].openningDatabase = 0;
-		            }
-		            else
-		            {
-		            	ParsedStringQueue *queue = parseStringSQLScript(message);
-		            	
-		            	if (queue != NULL && strcasecmp(queue->parsedString, "CREATE") == 0)
-		            	{
-			        		popParsedStringQueue(&queue);
-			        		
-				        	if (queue != NULL && strcasecmp(queue->parsedString, "USER") == 0 && clientAccountData[i].id == 0)
-		            		{
-			        			popParsedStringQueue(&queue);
-			        			if (createNewAccount(&queue) == 1)
-			        			{
-			        				strcpy(message, "MBerhasil menambahkan akun");
-			        			}
-			        			else
-			        			{
-			        				strcpy(message, "MGagal menambahkan akun");
-			        			}
-			        		}
-			        		else if (queue != NULL && strcasecmp(queue->parsedString, "DATABASE") == 0)
-		            		{
-			        			popParsedStringQueue(&queue);
-			        			if (createDatabaseScript(&queue, clientAccountData[i].id) == 1)
-			        			{
-			        				strcpy(message, "MBerhasil membuat database baru");
-			        			}
-			        			else
-			        			{
-			        				strcpy(message, "MGagal membuat database baru");
-			        			}
-			        		}
-			        		else if (queue != NULL && strcasecmp(queue->parsedString, "TABLE") == 0)
-		            		{
-			        			popParsedStringQueue(&queue);
-			        			if (createTableScript(&queue, &(clientAccountData[i])) == 1)
-			        			{
-			        				strcpy(message, "MBerhasil membuat table baru");
-			        			}
-			        			else
-			        			{
-			        				strcpy(message, "MGagal membuat table baru");
-			        			}
-			        		}
-			        		else
-			        		{
-		    					strcpy(message, "MScript error");
-			        		}
-				        }
-				        else if (queue != NULL && strcasecmp(queue->parsedString, "DROP") == 0)
-		            	{
-			        		popParsedStringQueue(&queue);
-			        		
-				        	if (queue != NULL && strcasecmp(queue->parsedString, "DATABASE") == 0)
-		            		{
-			        			popParsedStringQueue(&queue);
-			        			if (dropDatabaseScript(&queue, &clientAccountData[i]) == 1)
-			        			{
-			        				strcpy(message, "MBerhasil drop database");
-			        			}
-			        			else
-			        			{
-			        				strcpy(message, "MGagal drop database");
-			        			}
-			        		}
-			        		else if (queue != NULL && strcasecmp(queue->parsedString, "TABLE") == 0)
-		            		{
-			        			popParsedStringQueue(&queue);
-			        			if (dropTableScript(&queue, &(clientAccountData[i])) == 0)
-			        			{
-			        				strcpy(message, "MBerhasil drop table");
-			        			}
-			        			else
-			        			{
-			        				strcpy(message, "MGagal drop table");
-			        			}
-			        		}
-			        		else if (queue != NULL && strcasecmp(queue->parsedString, "COLUMN") == 0)
-		            		{
-			        			popParsedStringQueue(&queue);
-			        			if (dropColumnScript(&queue, &(clientAccountData[i])) == 1)
-			        			{
-			        				strcpy(message, "MBerhasil drop column");
-			        			}
-			        			else
-			        			{
-			        				strcpy(message, "MGagal drop column");
-			        			}
-			        		}
-			        		else
-			        		{
-		    					strcpy(message, "MScript error");
-			        		}
-				        }
-				        else if (queue != NULL && strcasecmp(queue->parsedString, "GRANT") == 0)
-		            	{
-			        		popParsedStringQueue(&queue);
-			        		
-				        	if (queue != NULL && strcasecmp(queue->parsedString, "PERMISSION") == 0 && clientAccountData[i].id == 0)
-		            		{
-			        			popParsedStringQueue(&queue);
-			        			if (grantPermissionUserOnDatabase(&queue) == 1)
-			        			{
-			        				strcpy(message, "MBerhasil menambahkan permission");
-			        			}
-			        			else
-			        			{
-			        				strcpy(message, "MGagal menambahkan permission");
-			        			}
-			        		}
-			        		else
-			        		{
-		    					strcpy(message, "MScript error");
-			        		}
-				        }
-				        else if (queue != NULL && strcasecmp(queue->parsedString, "USE") == 0)
-		            	{
-			        		popParsedStringQueue(&queue);
-			        		
-			        		if (useDatabaseScript(&queue, &(clientAccountData[i])) == 1)
-			        		{
-		        				strcpy(message, "MBerhasil membuka database");
-		        			}
-		        			else
-		        			{
-		        				strcpy(message, "MGagal membuka database");
-		        			}
-				        }
-				        else if (queue != NULL && strcasecmp(queue->parsedString, "INSERT") == 0)
-		            	{
-			        		popParsedStringQueue(&queue);
-			        		
-				        	if (queue != NULL && strcasecmp(queue->parsedString, "INTO") == 0)
-		            		{
-			        			popParsedStringQueue(&queue);
-			        			if (insertIntoDatabaseScript(&queue, &clientAccountData[i]) == 1)
-			        			{
-			        				strcpy(message, "MBerhasil memasukkan data");
-			        			}
-			        			else
-			        			{
-			        				strcpy(message, "MGagal memasukkan data");
-			        			}
-			        		}
-			        		else
-			        		{
-		    					strcpy(message, "MScript error");
-			        		}
-				        }
-				        else if (queue != NULL && strcasecmp(queue->parsedString, "DELETE") == 0)
-		            	{
-			        		popParsedStringQueue(&queue);
-			        		
-				        	if (queue != NULL && strcasecmp(queue->parsedString, "FROM") == 0)
-		            		{
-			        			popParsedStringQueue(&queue);
-			        			int deleted = deleteFromTableScript(&queue, &clientAccountData[i]);
-			        			if (deleted >= 0)
-			        			{
-			        				sprintf(message, "MBerhasil menghapus %d data", deleted);
-			        			}
-			        			else
-			        			{
-			        				strcpy(message, "MScript error");
-			        			}
-			        		}
-			        		else
-			        		{
-		    					strcpy(message, "MScript error");
-			        		}
-				        }
-				        else if (queue != NULL && strcasecmp(queue->parsedString, "SELECT") == 0)
-		            	{
-			        		popParsedStringQueue(&queue);
-			        		
-				        	if (queue != NULL)
-		            		{
+				if (newConnectionFileDescriptor >= 0) 
+				{
+					setupEpollConnection(epollFileDescriptor, newConnectionFileDescriptor, &epollEventNewConnection);
+				}
+				else 
+				{
+					printf("Failed to accept new connection\n");
+				}
+			}
+			else if (clientsList[i].events & EPOLLIN && clientsList[i].data.fd >= 0) 
+			{
+				if (recv(clientsList[i].data.fd, message, __DATA_BUFFER, 0) == 0)
+				{
+					epoll_ctl(epollFileDescriptor, EPOLL_CTL_DEL, clientsList[i].data.fd, &epollEventNewConnection);
+				}
+				else
+				{
+					if (message[0] == 'L')
+					{
+						int usernameLength;
+						int passwordLength;
+						size_t intSize = sizeof(usernameLength);
+						
+						memcpy(&usernameLength, message + 1, intSize);
+						memcpy(&passwordLength, message + 1 + intSize, intSize);
+						
+						char username[64];
+						char password[64];
+						
+						memset(username, 0, 64);
+						memset(password, 0, 64);
+						
+						memcpy(username, message + 1 + intSize * 2, usernameLength);
+						memcpy(password, message + 1 + intSize * 2 + usernameLength, passwordLength);
+						
+						RecordBlockVector records;
+						initRecordBlockVector(&records);
+						Attribute attribute[__MAX_ATTRIBUTE_ON_TABLE];
+						int attributeTotal = 0;
+						int recordBlockSize = 0;
+						
+						char usernameAttribute[64];
+						memset(usernameAttribute, 0, sizeof(usernameAttribute));
+						strcpy(usernameAttribute, "username");
+						
+						selectReadTable(
+							"admin", "account", &records, attribute, &attributeTotal, 
+							&recordBlockSize , usernameAttribute, username
+						);
+						
+						if (records.size == 1) 
+						{
+							if (memcmp(password, records.record[0].data + attribute[0].size + attribute[1].size, attribute[2].size) == 0)
+							{
+								strcpy(message, "success");
+								send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
+								
+								memcpy(&(clientAccountData[i].id), records.record[0].data, sizeof(clientAccountData[i].id));
+								clientAccountData[i].openningDatabase = 0;
+							}
+							else
+							{
+								strcpy(message, "failed");
+								send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
+							}
+						}
+						else
+						{
+							strcpy(message, "failed");
+							send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
+						}
+						
+						delRecordBlockVector(&records);
+					}
+					else if (strcmp(message, "root") == 0)
+					{
+						clientAccountData[i].id = 0;
+						clientAccountData[i].openningDatabase = 0;
+					}
+					else
+					{
+						ParsedStringQueue *queue = parseStringSQLScript(message);
+						
+						if (queue != NULL && strcasecmp(queue->parsedString, "CREATE") == 0)
+						{
+							popParsedStringQueue(&queue);
+							
+							if (queue != NULL && strcasecmp(queue->parsedString, "USER") == 0 && clientAccountData[i].id == 0)
+							{
+								popParsedStringQueue(&queue);
+								if (createNewAccount(&queue) == 1)
+								{
+									strcpy(message, "MBerhasil menambahkan akun");
+								}
+								else
+								{
+									strcpy(message, "MGagal menambahkan akun");
+								}
+							}
+							else if (queue != NULL && strcasecmp(queue->parsedString, "DATABASE") == 0)
+							{
+								popParsedStringQueue(&queue);
+								if (createDatabaseScript(&queue, clientAccountData[i].id) == 1)
+								{
+									strcpy(message, "MBerhasil membuat database baru");
+								}
+								else
+								{
+									strcpy(message, "MGagal membuat database baru");
+								}
+							}
+							else if (queue != NULL && strcasecmp(queue->parsedString, "TABLE") == 0)
+							{
+								popParsedStringQueue(&queue);
+								if (createTableScript(&queue, &(clientAccountData[i])) == 1)
+								{
+									strcpy(message, "MBerhasil membuat table baru");
+								}
+								else
+								{
+									strcpy(message, "MGagal membuat table baru");
+								}
+							}
+							else
+							{
+								strcpy(message, "MScript error");
+							}
+						}
+						else if (queue != NULL && strcasecmp(queue->parsedString, "DROP") == 0)
+						{
+							popParsedStringQueue(&queue);
+							
+							if (queue != NULL && strcasecmp(queue->parsedString, "DATABASE") == 0)
+							{
+								popParsedStringQueue(&queue);
+								if (dropDatabaseScript(&queue, &clientAccountData[i]) == 1)
+								{
+									strcpy(message, "MBerhasil drop database");
+								}
+								else
+								{
+									strcpy(message, "MGagal drop database");
+								}
+							}
+							else if (queue != NULL && strcasecmp(queue->parsedString, "TABLE") == 0)
+							{
+								popParsedStringQueue(&queue);
+								if (dropTableScript(&queue, &(clientAccountData[i])) == 0)
+								{
+									strcpy(message, "MBerhasil drop table");
+								}
+								else
+								{
+									strcpy(message, "MGagal drop table");
+								}
+							}
+							else if (queue != NULL && strcasecmp(queue->parsedString, "COLUMN") == 0)
+							{
+								popParsedStringQueue(&queue);
+								if (dropColumnScript(&queue, &(clientAccountData[i])) == 1)
+								{
+									strcpy(message, "MBerhasil drop column");
+								}
+								else
+								{
+									strcpy(message, "MGagal drop column");
+								}
+							}
+							else
+							{
+								strcpy(message, "MScript error");
+							}
+						}
+						else if (queue != NULL && strcasecmp(queue->parsedString, "GRANT") == 0)
+						{
+							popParsedStringQueue(&queue);
+							
+							if (queue != NULL && strcasecmp(queue->parsedString, "PERMISSION") == 0 && clientAccountData[i].id == 0)
+							{
+								popParsedStringQueue(&queue);
+								if (grantPermissionUserOnDatabase(&queue) == 1)
+								{
+									strcpy(message, "MBerhasil menambahkan permission");
+								}
+								else
+								{
+									strcpy(message, "MGagal menambahkan permission");
+								}
+							}
+							else
+							{
+								strcpy(message, "MScript error");
+							}
+						}
+						else if (queue != NULL && strcasecmp(queue->parsedString, "USE") == 0)
+						{
+							popParsedStringQueue(&queue);
+							
+							if (useDatabaseScript(&queue, &(clientAccountData[i])) == 1)
+							{
+								strcpy(message, "MBerhasil membuka database");
+							}
+							else
+							{
+								strcpy(message, "MGagal membuka database");
+							}
+						}
+						else if (queue != NULL && strcasecmp(queue->parsedString, "INSERT") == 0)
+						{
+							popParsedStringQueue(&queue);
+							
+							if (queue != NULL && strcasecmp(queue->parsedString, "INTO") == 0)
+							{
+								popParsedStringQueue(&queue);
+								if (insertIntoDatabaseScript(&queue, &clientAccountData[i]) == 1)
+								{
+									strcpy(message, "MBerhasil memasukkan data");
+								}
+								else
+								{
+									strcpy(message, "MGagal memasukkan data");
+								}
+							}
+							else
+							{
+								strcpy(message, "MScript error");
+							}
+						}
+						else if (queue != NULL && strcasecmp(queue->parsedString, "DELETE") == 0)
+						{
+							popParsedStringQueue(&queue);
+							
+							if (queue != NULL && strcasecmp(queue->parsedString, "FROM") == 0)
+							{
+								popParsedStringQueue(&queue);
+								int deleted = deleteFromTableScript(&queue, &clientAccountData[i]);
+								if (deleted >= 0)
+								{
+									sprintf(message, "MBerhasil menghapus %d data", deleted);
+								}
+								else
+								{
+									strcpy(message, "MScript error");
+								}
+							}
+							else
+							{
+								strcpy(message, "MScript error");
+							}
+						}
+						else if (queue != NULL && strcasecmp(queue->parsedString, "SELECT") == 0)
+						{
+							popParsedStringQueue(&queue);
+							
+							if (queue != NULL)
+							{
 								Attribute tableAttribute[__MAX_ATTRIBUTE_ON_TABLE];
-		            			int totalAttribute = 0;
-		            			RecordBlockVector records;
-		            			initRecordBlockVector(&records);
-		            			int selectedAttribute[__MAX_ATTRIBUTE_ON_TABLE];
-		            			int amountOfSelectedAttribute = 0;
-		            			
-			        			if (
-			        				selectFromTableScript(
-			        					&queue, &clientAccountData[i], tableAttribute, &totalAttribute, 
-			        					&records, selectedAttribute, &amountOfSelectedAttribute
-			        				) == 1
-			        			)
-			        			{
-			        				sprintf(message, "Q");
-		            				send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
-			        				
-			        				memcpy(message, &amountOfSelectedAttribute, sizeof(amountOfSelectedAttribute));
-		            				send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
-			        				
-			        				for (int j = 0; j < amountOfSelectedAttribute; j++)
-			        				{
-			        					sprintf(message, "%s", tableAttribute[selectedAttribute[j]].attributeName);
-		            					send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
-			        				}
-			        				
-			        				memcpy(message, &(records.size), sizeof(records.size));
-		            				send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
-		            				
-		            				int offsetDataOfAttribute[__MAX_ATTRIBUTE_ON_TABLE];
-		            				int offsetData = 0;
-		            				
-		            				for (int j = 0; j < totalAttribute; j++)
-		            				{
-		            					offsetDataOfAttribute[j] = offsetData;
-		            					offsetData += tableAttribute[j].size;
-		            				}
-		            				
-		            				for (int j = 0; j < records.size; j++)
-			        				{
-			        					for (int k = 0; k < amountOfSelectedAttribute; k++)
-			        					{
-			        						
-			        						if (tableAttribute[selectedAttribute[k]].type == STRING)
-			        						{
-					    						int copiedCharacter = 0;
-					    						int bufferFilled = 1;
-					    						message[0] = 'V';
-				        						while(copiedCharacter < tableAttribute[selectedAttribute[k]].size)
-				        						{
-				        							message[bufferFilled] = (
-				        								(char *)getRecordBlockVector(&records)[j].data)[
-				        									offsetDataOfAttribute[selectedAttribute[k]] + copiedCharacter];
-				        							bufferFilled++;
-				        							copiedCharacter++;
-				        							
-				        							if (bufferFilled == __DATA_BUFFER - 1 || copiedCharacter == tableAttribute[selectedAttribute[k]].size)
-				        							{
-				        								message[bufferFilled] = '\0';
-		            									send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
-				        								bufferFilled = 1;
-		            									message[0] = 'V';
-				        							}
-				        						}
-				    						}
-				    						else if (tableAttribute[selectedAttribute[k]].type == INT)
-				    						{
-				    							sprintf(message, "V%d", *(int *)(getRecordBlockVector(&records)[j].data + offsetDataOfAttribute[selectedAttribute[k]])); 
-												send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
-				    						}
-				    						else if (tableAttribute[selectedAttribute[k]].type == LONG)
-				    						{
-				    							sprintf(message, "V%lld", *(long long int *)(getRecordBlockVector(&records)[j].data + offsetDataOfAttribute[selectedAttribute[k]])); 
-												send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
-				    						}
-				    						else if (tableAttribute[selectedAttribute[k]].type == DECIMAL)
-				    						{
-				    							sprintf(message, "V%lf", *(double *)(getRecordBlockVector(&records)[j].data + offsetDataOfAttribute[selectedAttribute[k]])); 
-												send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
-				    						}
-				    						else if (tableAttribute[selectedAttribute[k]].type == DATE)
-				    						{
-				    							char date[tableAttribute[selectedAttribute[k]].size + 1];
-				    							strncpy(date, getRecordBlockVector(&records)[j].data + offsetDataOfAttribute[selectedAttribute[k]], tableAttribute[selectedAttribute[k]].size);
-				    							sprintf(message, "V%s", date); 
-												send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
-				    						}
-				    						else if (tableAttribute[selectedAttribute[k]].type == TIME)
-				    						{
-				    							char time[tableAttribute[selectedAttribute[k]].size + 1];
-				    							strncpy(time, getRecordBlockVector(&records)[j].data + offsetDataOfAttribute[selectedAttribute[k]], tableAttribute[selectedAttribute[k]].size);
-				    							sprintf(message, "V%s", time); 
-												send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
-				    						}
-				    						else if (tableAttribute[selectedAttribute[k]].type == DATETIME)
-				    						{
-				    							char datetime[tableAttribute[selectedAttribute[k]].size + 1];
-				    							strncpy(datetime, getRecordBlockVector(&records)[j].data + offsetDataOfAttribute[selectedAttribute[k]], tableAttribute[selectedAttribute[k]].size);
-				    							sprintf(message, "V%s", datetime); 
-												send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
-				    						}
-				    						sprintf(message, "C"); 
-											send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
-			        					}
-			        					sprintf(message, "R"); 
+								int totalAttribute = 0;
+								RecordBlockVector records;
+								initRecordBlockVector(&records);
+								int selectedAttribute[__MAX_ATTRIBUTE_ON_TABLE];
+								int amountOfSelectedAttribute = 0;
+										
+								if (
+									selectFromTableScript(
+										&queue, &clientAccountData[i], tableAttribute, &totalAttribute, 
+										&records, selectedAttribute, &amountOfSelectedAttribute
+									) == 1
+								)
+								{
+									sprintf(message, "Q");
+									send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
+									
+									memcpy(message, &amountOfSelectedAttribute, sizeof(amountOfSelectedAttribute));
+									send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
+									
+									for (int j = 0; j < amountOfSelectedAttribute; j++)
+									{
+										sprintf(message, "%s", tableAttribute[selectedAttribute[j]].attributeName);
 										send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
-			        				}
-			        				
-		        					sprintf(message, "F"); 
-			        				
-			        			}
-			        			else
-			        			{
-			        				strcpy(message, "MScript error");
-			        			}
-			        			
-			        			delRecordBlockVector(&records);
-			        		}
-			        		else
-			        		{
-		    					strcpy(message, "MScript error");
-			        		}
-				        }
-				        else if (queue != NULL && strcasecmp(queue->parsedString, "UPDATE") == 0)
-		            	{
-			        		popParsedStringQueue(&queue);
-			        		
-			        		int updateResult = updateTableScript(&queue, &clientAccountData[i]);
-			        		if (updateResult >= 0)
-			        		{
-		        				sprintf(message, "MBerhasil mengganti %d data", updateResult);
-			        		}
-			        		else
-			        		{
-		    					strcpy(message, "MScript error");
-			        		}
-		        		}
-				        else
-				        {
-		    				strcpy(message, "MScript error");
-				        }
-		            	send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
-		            	
-		            	while(queue != NULL)
-		            	{
-		            		popParsedStringQueue(&queue);
-		            	}
-		            }
-	            }
-            }
-        }
-    }
+									}
+									
+									memcpy(message, &(records.size), sizeof(records.size));
+									send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
+										
+									int offsetDataOfAttribute[__MAX_ATTRIBUTE_ON_TABLE];
+									int offsetData = 0;
+									
+									for (int j = 0; j < totalAttribute; j++)
+									{
+										offsetDataOfAttribute[j] = offsetData;
+										offsetData += tableAttribute[j].size;
+									}
+										
+									for (int j = 0; j < records.size; j++)
+									{
+										for (int k = 0; k < amountOfSelectedAttribute; k++)
+										{
+											if (tableAttribute[selectedAttribute[k]].type == STRING)
+											{
+												int copiedCharacter = 0;
+												int bufferFilled = 1;
+												message[0] = 'V';
+												while(copiedCharacter < tableAttribute[selectedAttribute[k]].size)
+												{
+													message[bufferFilled] = (
+														(char *)getRecordBlockVector(&records)[j].data)[
+															offsetDataOfAttribute[selectedAttribute[k]] + copiedCharacter];
+													bufferFilled++;
+													copiedCharacter++;
+													
+													if (bufferFilled == __DATA_BUFFER - 1 || copiedCharacter == tableAttribute[selectedAttribute[k]].size)
+													{
+														message[bufferFilled] = '\0';
+														send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
+														bufferFilled = 1;
+														message[0] = 'V';
+													}
+												}
+											}
+											else if (tableAttribute[selectedAttribute[k]].type == INT)
+											{
+												sprintf(message, "V%d", *(int *)(getRecordBlockVector(&records)[j].data + offsetDataOfAttribute[selectedAttribute[k]])); 
+												send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
+											}
+											else if (tableAttribute[selectedAttribute[k]].type == LONG)
+											{
+												sprintf(message, "V%lld", *(long long int *)(getRecordBlockVector(&records)[j].data + offsetDataOfAttribute[selectedAttribute[k]])); 
+												send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
+											}
+											else if (tableAttribute[selectedAttribute[k]].type == DECIMAL)
+											{
+												sprintf(message, "V%lf", *(double *)(getRecordBlockVector(&records)[j].data + offsetDataOfAttribute[selectedAttribute[k]])); 
+												send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
+											}
+											else if (tableAttribute[selectedAttribute[k]].type == DATE)
+											{
+												char date[tableAttribute[selectedAttribute[k]].size + 1];
+												strncpy(date, getRecordBlockVector(&records)[j].data + offsetDataOfAttribute[selectedAttribute[k]], tableAttribute[selectedAttribute[k]].size);
+												sprintf(message, "V%s", date); 
+												send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
+											}
+											else if (tableAttribute[selectedAttribute[k]].type == TIME)
+											{
+												char time[tableAttribute[selectedAttribute[k]].size + 1];
+												strncpy(time, getRecordBlockVector(&records)[j].data + offsetDataOfAttribute[selectedAttribute[k]], tableAttribute[selectedAttribute[k]].size);
+												sprintf(message, "V%s", time); 
+												send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
+											}
+											else if (tableAttribute[selectedAttribute[k]].type == DATETIME)
+											{
+												char datetime[tableAttribute[selectedAttribute[k]].size + 1];
+												strncpy(datetime, getRecordBlockVector(&records)[j].data + offsetDataOfAttribute[selectedAttribute[k]], tableAttribute[selectedAttribute[k]].size);
+												sprintf(message, "V%s", datetime); 
+												send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
+											}
+											sprintf(message, "C"); 
+											send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
+										}
+										sprintf(message, "R"); 
+										send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
+									}
+									sprintf(message, "F"); 
+								}
+								else
+								{
+									strcpy(message, "MScript error");
+								}
+									
+								delRecordBlockVector(&records);
+							}
+							else
+							{
+							strcpy(message, "MScript error");
+							}
+						}
+						else if (queue != NULL && strcasecmp(queue->parsedString, "UPDATE") == 0)
+						{
+							popParsedStringQueue(&queue);
+							
+							int updateResult = updateTableScript(&queue, &clientAccountData[i]);
+							if (updateResult >= 0)
+							{
+								sprintf(message, "MBerhasil mengganti %d data", updateResult);
+							}
+							else
+							{
+								strcpy(message, "MScript error");
+							}
+						}
+						else
+						{
+							strcpy(message, "MScript error");
+						}
+						send(clientsList[i].data.fd, message, __DATA_BUFFER, 0);
+						
+						while(queue != NULL)
+						{
+							popParsedStringQueue(&queue);
+						}
+					}
+				}
+			}
+		}
+	}
 
-    for (int i = 0; i < __MAX_CONNECTIONS; i++) 
-    {
-        if (clientsList[i].data.fd > 0) 
-        {
-            close(clientsList[i].data.fd);
-        }
-    }
-    return 0;
+	for (int i = 0; i < __MAX_CONNECTIONS; i++) 
+	{
+		if (clientsList[i].data.fd > 0) 
+		{
+			close(clientsList[i].data.fd);
+		}
+	}
+	return 0;
 }
