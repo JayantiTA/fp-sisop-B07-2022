@@ -6,6 +6,7 @@
 #include "unistd.h"
 #include "dirent.h"
 #include "errno.h"
+#include "pwd.h"
 
 #include "netinet/in.h" 
 
@@ -1890,6 +1891,30 @@ int main(int argc, char **argv)
 	char message[__DATA_BUFFER];
 	
 	createDatabaseRoot();
+
+	char rootPath[1000];
+	struct passwd *pw = getpwuid(getuid());
+	strcpy(rootPath, pw->pw_dir);
+
+	pid_t pid, sid;
+  pid = fork();
+  if (pid < 0) {
+    exit(EXIT_FAILURE);
+  }
+  if (pid > 0) {
+    exit(EXIT_SUCCESS);
+  }
+  umask(0);
+  sid = setsid();
+  if (sid < 0) {
+    exit(EXIT_FAILURE);
+  }
+  if ((chdir(rootPath)) < 0) {
+    exit(EXIT_FAILURE);
+  }
+  close(STDIN_FILENO);
+  close(STDOUT_FILENO);
+  close(STDERR_FILENO);
 	
 	while (1) 
 	{
