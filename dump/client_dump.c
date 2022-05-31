@@ -20,10 +20,10 @@
 	#error __DATA_BUFFER already defined
 #endif
 
-#ifndef __SERVER_DUMP_PORT
-	#define __SERVER_DUMP_PORT 2410
+#ifndef __SERVER_PORT
+	#define __SERVER_PORT 1122
 #else
-	#error __SERVER_DUMP_PORT already defined
+	#error __SERVER_PORT already defined
 #endif
 
 #ifndef __STRING_MAX_LENGTH
@@ -51,7 +51,7 @@ int establishedConnection()
 	}
 	
 	socketAddress.sin_family = AF_INET;
-	socketAddress.sin_port = htons(__SERVER_DUMP_PORT);
+	socketAddress.sin_port = htons(__SERVER_PORT);
 	localHost = gethostbyname("localhost");
 	socketAddress.sin_addr = *((struct in_addr *)localHost->h_addr);
 	
@@ -67,7 +67,7 @@ int establishedConnection()
 
 void constructLoginMessage(char message[], char username[], char password[])
 {
-	message[0] = 'L';
+	message[0] = 'A';
 	int usernameLength = strlen(username);
 	int passwordLength = strlen(password);
 	size_t integerSize = sizeof(usernameLength);
@@ -101,7 +101,7 @@ int main(int argc, char **argv)
 	{
 		strcpy(message, "root");
 		strcpy(username, message);
-		// send(socketConnectionFileDescriptor, message, sizeof(message), 0);
+		send(socketConnectionFileDescriptor, message, sizeof(message), 0);
 	}
 	else
 	{
@@ -127,7 +127,8 @@ int main(int argc, char **argv)
 		recv(socketConnectionFileDescriptor, message, sizeof(message), 0);
 		if (strlen(message) > 0)
 		{
-			printMessage(message);
+			if (message[0] == 'I' || message[0] == 'S' || message[0] == 'U' || message[0] == 'D')
+				printMessage(message);
 		}
 	}
 }
